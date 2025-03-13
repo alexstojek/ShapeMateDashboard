@@ -1,4 +1,6 @@
 // App.tsx
+import { useEffect, useState } from 'react';
+import { supabase } from './supabaseClient';
 import {
   Clock,
   Droplets,
@@ -8,8 +10,6 @@ import {
   Sun,
   UtensilsCrossed
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
 
 /**
  * Erzeugt ein Array von Tagen, z. B. 5 Tage:
@@ -18,8 +18,10 @@ import { supabase } from './supabaseClient';
  * - 2 Tage nach heute
  */
 function getDynamicDates(daysBefore = 2, daysAfter = 2) {
-  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun',
-                      'Jul','Aug','Sep','Oct','Nov','Dec'];
+  const monthNames = [
+    'Jan','Feb','Mar','Apr','May','Jun',
+    'Jul','Aug','Sep','Oct','Nov','Dec'
+  ];
   const today = new Date();
   const datesArray = [];
 
@@ -27,8 +29,8 @@ function getDynamicDates(daysBefore = 2, daysAfter = 2) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
 
-    const dayString = String(d.getDate()).padStart(2, '0'); 
-    const monthString = monthNames[d.getMonth()]; 
+    const dayString = String(d.getDate()).padStart(2, '0');
+    const monthString = monthNames[d.getMonth()];
     const isToday = i === 0;
 
     datesArray.push({
@@ -95,7 +97,23 @@ function App() {
   // Mahlzeiten (Timeline)
   const [meals, setMeals] = useState<Meal[]>([]);
 
-  // useEffect: Daten laden (tagesbezogen)
+  /**
+   * 1) NEU: Telefonnummer aus URL-Parametern lesen
+   *    Beim Seitenladen wird geprüft, ob "?phone=xxx" vorhanden ist.
+   *    Falls ja, wird 'sender' automatisch gesetzt.
+   */
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const phoneParam = urlParams.get('phone');
+    if (phoneParam) {
+      setSender(phoneParam.trim());
+      setMobileNumberInput(phoneParam.trim());
+    }
+  }, []);
+
+  /**
+   * 2) Daten laden (tagesbezogen), sobald 'sender' bekannt ist
+   */
   useEffect(() => {
     if (!sender) return;
 
@@ -151,7 +169,7 @@ function App() {
           setWeight(weightData.weight);
         }
 
-        // 3) mahlzeiten (Tag) -> Kcal + Makros summieren
+        // 3) mahlzeiten (Tag)
         const { data: mealsData } = await supabase
           .from('mahlzeiten')
           .select('id, time, meal_title, kcal, protein, carbs, fat, created_at')
@@ -204,7 +222,7 @@ function App() {
           setHydration(0);
         }
 
-        // 5) kcal (Workouts) -> "kcal_verbrauch" (Tag)
+        // 5) kcal (Workouts)
         const { data: kcalRows } = await supabase
           .from('kcal')
           .select('kcal_verbrauch, created_at')
@@ -265,7 +283,9 @@ function App() {
     fetchData();
   }, [sender, selectedDate, dates]);
 
-  // Handler für die Mobilnummer-Eingabe
+  /**
+   * 3) Eingabe-Feld für die Nummer, falls kein URL-Parameter vorhanden ist
+   */
   const handleMobileSubmit = () => {
     if (!mobileNumberInput.trim()) {
       setErrorMessage('Bitte gib eine gültige Nummer ein.');
@@ -275,7 +295,7 @@ function App() {
     setErrorMessage('');
   };
 
-  // Falls noch keine Nummer eingegeben
+  // Falls noch keine Nummer => Eingabe-Feld
   if (!sender) {
     return (
       <div
@@ -312,7 +332,7 @@ function App() {
     );
   }
 
-  // Dashboard-Anzeige
+  // Ab hier: Dashboard
   const totalKcal = kcalEaten;
   const goalKcal = kcalBedarf || 1;
   const appBg = darkMode ? 'bg-[#1C1C1C] text-white' : 'bg-[#F9F9F9] text-gray-800';
@@ -362,7 +382,7 @@ function App() {
             <p className="text-sm text-gray-400">Height</p>
             <p className="text-lg font-semibold">{groesse}cm</p>
           </div>
-          {/* Age Box (Statisch 25) */}
+          {/* Age Box (statisch) */}
           <div className={`${cardBg} rounded-lg p-3 w-24 text-center`}>
             <p className="text-sm text-gray-400">Age</p>
             <p className="text-lg font-semibold">25</p>
