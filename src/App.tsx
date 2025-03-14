@@ -8,7 +8,7 @@ import {
   FootprintsIcon,
   Moon,
   Sun,
-  UtensilsCrossed
+  UtensilsCrossed,
 } from 'lucide-react';
 
 /**
@@ -54,6 +54,15 @@ interface Meal {
   created_at?: string;
 }
 
+// Workout-Typ
+interface Workout {
+  id?: number;
+  created_at?: string;
+  kcal_verbrauch?: number;
+  workout_type?: string;
+  workout_duration?: string;
+}
+
 function App() {
   // Dark Mode als Standard
   const [darkMode, setDarkMode] = useState(true);
@@ -97,10 +106,15 @@ function App() {
   // Mahlzeiten (Timeline)
   const [meals, setMeals] = useState<Meal[]>([]);
 
+  // Workout Timeline
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+
+  // Tab-Switch: 'meals' oder 'workouts'
+  const [activeTab, setActiveTab] = useState<'meals' | 'workouts'>('meals');
+
   /**
-   * 1) NEU: Telefonnummer aus URL-Parametern lesen
+   * 1) Telefonnummer aus URL-Parametern lesen
    *    Beim Seitenladen wird geprüft, ob "?phone=xxx" vorhanden ist.
-   *    Falls ja, wird 'sender' automatisch gesetzt.
    */
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -204,6 +218,22 @@ function App() {
           setFatConsumed(0);
         }
 
+        // 3.5) workouts (Tag)
+        // Hier lese ich die Daten aus der Tabelle "kcal"
+        // Passe es an, wenn deine Tabelle anders heißt!
+        const { data: workoutData } = await supabase
+          .from('kcal')
+          .select('id, created_at, kcal_verbrauch, workout_type, workout_duration')
+          .eq('sender', sender)
+          .gte('created_at', startOfDayISO)
+          .lt('created_at', endOfDayISO);
+
+        if (workoutData && Array.isArray(workoutData)) {
+          setWorkouts(workoutData);
+        } else {
+          setWorkouts([]);
+        }
+
         // 4) hydration_table (Tag)
         const { data: hydrationData } = await supabase
           .from('hydration_table')
@@ -222,7 +252,8 @@ function App() {
           setHydration(0);
         }
 
-        // 5) kcal (Workouts)
+        // 5) kcal (Workouts) -> hier summierst du den Tag?
+        // Du hast ja unten "kcalWorkout" -> wir lassen es so
         const { data: kcalRows } = await supabase
           .from('kcal')
           .select('kcal_verbrauch, created_at')
@@ -426,58 +457,154 @@ function App() {
           </p>
         </div>
 
-        {/* Makros: Konsumiert / Bedarf */}
+        {/* Makros: Konsumiert / Bedarf => jetzt gerundet */}
         <div className="flex justify-around mb-6">
           <div className="text-center">
             <p className="text-gray-400 text-sm">Proteins</p>
             <p className="text-lg font-bold">
-              {proteinConsumed} / {proteinMain} g
+              {Math.round(proteinConsumed)} / {Math.round(proteinMain)} g
             </p>
           </div>
           <div className="text-center">
             <p className="text-gray-400 text-sm">Carbs</p>
             <p className="text-lg font-bold">
-              {carbsConsumed} / {carbsMain} g
+              {Math.round(carbsConsumed)} / {Math.round(carbsMain)} g
             </p>
           </div>
           <div className="text-center">
             <p className="text-gray-400 text-sm">Fats</p>
             <p className="text-lg font-bold">
-              {fatConsumed} / {fatMain} g
+              {Math.round(fatConsumed)} / {Math.round(fatMain)} g
             </p>
           </div>
         </div>
 
-        {/* Timeline */}
+        {/* Card mit Tab-Switch (Meals / Workouts), ohne "Timeline"-Überschrift */}
         <div className={`${cardBg} rounded-lg p-4 mb-4`}>
-          <div className="flex items-center gap-2 mb-2">
-            <UtensilsCrossed className="text-[#9DC183]" size={20} />
-            <h3 className="font-bold">Calories Timeline</h3>
+          {/* Tab-Buttons => über die ganze Breite (flex-1) */}
+          <div className="flex w-full gap-2 mb-4">
+            <button
+              onClick={() => setActiveTab('meals')}
+              className={`flex-1 px-3 py-2 rounded text-center font-semibold ${
+                activeTab === 'meals'
+                  ? 'bg-[#9DC183] text-white'
+                  : 'bg-gray-600 text-gray-100'
+              }`}
+            >
+              Calories
+            </button>
+            <button
+              onClick={() => setActiveTab('workouts')}
+              className={`flex-1 px-3 py-2 rounded text-center font-semibold ${
+                activeTab === 'workouts'
+                  ? 'bg-[#9DC183] text-white'
+                  : 'bg-gray-600 text-gray-100'
+              }`}
+            >
+              Workouts
+            </button>
           </div>
-          <div className="space-y-3">
-            {meals.map((meal) => (
-              <div key={meal.id} className="flex items-center gap-4">
-                <div className="w-14 text-sm text-gray-300">{meal.time}</div>
-                <div className="flex-1">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm">{meal.meal_title}</span>
-                    <span className="text-sm font-medium">{meal.kcal} kcal</span>
+
+          {/* Wenn Meals-Tab aktiv */}
+          {activeTab === 'meals' && (
+            <div className="space-y-3">
+              {meals.map((meal) => {
+                // parse Floats
+                const pVal = parseFloat(meal.protein as string || '0');
+                const cVal = parseFloat(meal.carbs as string || '0');
+                const fVal = parseFloat(meal.fat as string || '0');
+                const totalMacros = pVal + cVal + fVal;
+
+                // prozentuale Balken
+                const pPercent = totalMacros ? (pVal / totalMacros) * 100 : 0;
+                const cPercent = totalMacros ? (cVal / totalMacros) * 100 : 0;
+                const fPercent = totalMacros ? (fVal / totalMacros) * 100 : 0;
+
+                return (
+                  <div key={meal.id} className="flex items-center gap-4">
+                    <div className="w-14 text-sm text-gray-300">{meal.time}</div>
+                    <div className="flex-1">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm">{meal.meal_title}</span>
+                        <span className="text-sm font-medium">{meal.kcal} kcal</span>
+                      </div>
+                      {/* Makro-Angaben, gerundet */}
+                      <div className="flex justify-between text-xs mb-1 text-gray-400">
+                        <span>Protein: {Math.round(pVal)}g</span>
+                        <span>Carbs: {Math.round(cVal)}g</span>
+                        <span>Fat: {Math.round(fVal)}g</span>
+                      </div>
+                      {/* 3 Balken nebeneinander */}
+                      <div className="h-2 w-full bg-gray-700 rounded-full overflow-hidden flex">
+                        {/* Protein-Balken */}
+                        <div
+                          className="bg-[#9DC183]"
+                          style={{ width: `${pPercent}%` }}
+                        />
+                        {/* Carbs-Balken */}
+                        <div
+                          className="bg-[#FFA726]"
+                          style={{ width: `${cPercent}%` }}
+                        />
+                        {/* Fat-Balken */}
+                        <div
+                          className="bg-[#FF5722]"
+                          style={{ width: `${fPercent}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="h-2 w-full bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[#9DC183] rounded-full"
-                      style={{ width: `${(meal.kcal / 1000) * 100}%` }}
-                    />
+                );
+              })}
+              {!meals.length && (
+                <p className="text-sm text-gray-400">
+                  No meals found for this day.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Wenn Workouts-Tab aktiv */}
+          {activeTab === 'workouts' && (
+            <div className="space-y-3">
+              {workouts.map((workout) => {
+                // Zeit aus created_at parsen
+                const wDate = new Date(workout.created_at!);
+                const wTime = wDate.toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+
+                return (
+                  <div key={workout.id} className="flex items-center gap-4">
+                    <div className="w-14 text-sm text-gray-300">{wTime}</div>
+                    <div className="flex-1">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm">
+                          {workout.workout_type || 'Workout'}
+                        </span>
+                        <span className="text-sm font-medium">
+                          {workout.kcal_verbrauch ?? 0} kcal
+                        </span>
+                      </div>
+                      {/* Zusatzinfos: Duration + "min" */}
+                      <div className="flex justify-between text-xs mb-1 text-gray-400">
+                        <span>
+                          Duration: {workout.workout_duration || '0'} min
+                        </span>
+                      </div>
+                      {/* Balken unter dem Workout entfernt */}
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-            {!meals.length && (
-              <p className="text-sm text-gray-400">
-                No meals found for this day.
-              </p>
-            )}
-          </div>
+                );
+              })}
+              {!workouts.length && (
+                <p className="text-sm text-gray-400">
+                  No workouts found for this day.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Stats Grid (Hydration, Workouts, Sleep, Steps) */}
